@@ -3,7 +3,7 @@ import '../services/auth_api.dart';
 import '../services/session.dart';
 
 class OtpScreen extends StatefulWidget {
-  const OtpScreen({Key? key}) : super(key: key);
+  const OtpScreen({super.key});
 
   @override
   State<OtpScreen> createState() => _OtpScreenState();
@@ -37,8 +37,10 @@ class _OtpScreenState extends State<OtpScreen> {
     try {
       final token = await AuthApi.verifyOtp(_email, code);
       await Session.saveToken(token);
+      if (!mounted) return;
       Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       setState(() => _loading = false);

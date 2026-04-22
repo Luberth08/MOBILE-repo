@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class AuthApi {
-  // Ajusta esta URL según donde esté tu backend (emulador Android: 10.0.2.2)
-  static String baseUrl = 'http://10.0.2.2:8000';
+  // Usando ADB reverse para que el teléfono conecte a la PC por cable
+  static String baseUrl = 'http://127.0.0.1:8000/api/v1/auth/mobile';
 
   static Future<Map<String, dynamic>> checkEmail(String email) async {
     final url = Uri.parse('$baseUrl/check-email');
