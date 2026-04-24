@@ -5,7 +5,8 @@
 //   flutter run --dart-define=API_URL=http://192.168.1.5:8000
 const String kApiBaseUrl = String.fromEnvironment(
   'API_URL',
-  defaultValue: 'http://localhost:8000',
+  // defaultValue: 'http://localhost:8000',
+  defaultValue: 'https://backend-repo-2ncr.onrender.com/api/v1/',
 );
 
 // Helper note:
