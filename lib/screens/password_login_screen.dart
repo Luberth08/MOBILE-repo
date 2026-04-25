@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_api.dart';
 import '../services/session.dart';
+import 'change_password_screen.dart';
 
 class PasswordLoginScreen extends StatefulWidget {
   const PasswordLoginScreen({Key? key}) : super(key: key);
@@ -57,6 +58,27 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
       );
     } finally {
       setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _forgotPassword() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChangePasswordScreen(email: _email),
+      ),
+    );
+    
+    if (result == true && mounted) {
+      // Contraseña cambiada exitosamente, mostrar mensaje
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Contraseña actualizada. Inicia sesión con tu nueva contraseña.'),
+          backgroundColor: const Color(0xFF52341A),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+      );
     }
   }
 
@@ -237,17 +259,7 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
                                   // Forgot password
                                   Center(
                                     child: TextButton(
-                                      onPressed: _loading ? null : () {
-                                        // TODO: Implementar recuperación de contraseña
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: const Text('Función no implementada aún'),
-                                            backgroundColor: const Color(0xFF52341A),
-                                            behavior: SnackBarBehavior.floating,
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                          ),
-                                        );
-                                      },
+                                      onPressed: _loading ? null : _forgotPassword,
                                       child: const Text(
                                         '¿Olvidaste tu contraseña?',
                                         style: TextStyle(

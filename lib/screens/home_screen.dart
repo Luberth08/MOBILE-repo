@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../services/session.dart';
 import '../services/auth_api.dart';
 import 'profile_tab.dart';
+import 'create_diagnostic_screen.dart';
+import 'solicitudes_tab.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -88,10 +90,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ),
       body: TabBarView(
         controller: _tabController,
-        children: [
-          const ProfileTab(),
-          _buildComingSoonTab('Solicitar Diagnóstico'),
-          _buildComingSoonTab('Solicitudes'),
+        children: const [
+          ProfileTab(),
+          CreateDiagnosticScreen(),
+          SolicitudesTab(),
         ],
       ),
       bottomNavigationBar: Container(
@@ -131,62 +133,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             Tab(
               icon: Icon(Icons.history),
               text: 'Solicitudes',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildComingSoonTab(String title) {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFF5F2EB), Color(0xFFE8E3DA)],
-        ),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.08),
-                    blurRadius: 24,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.construction,
-                size: 64,
-                color: Color(0xFF932D30),
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              'Próximamente',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: const Color(0xFF2C2C2C),
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '$title estará disponible pronto',
-              style: TextStyle(
-                fontSize: 16,
-                color: const Color(0xFF52341A).withOpacity(0.8),
-              ),
-              textAlign: TextAlign.center,
             ),
           ],
         ),
