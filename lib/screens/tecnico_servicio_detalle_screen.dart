@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
 import '../models/tecnico_servicio.dart';
 import '../services/session.dart';
 import '../services/tecnico_api.dart';
@@ -33,6 +35,10 @@ class _TecnicoServicioDetalleScreenState extends State<TecnicoServicioDetalleScr
   double? _distanciaActual;
   bool _enProximidad = false;
   bool _dialogoProximidadMostrado = false; // Evitar mostrar múltiples veces
+  List<LatLng> _rutaPuntos = []; // Puntos de la ruta óptima
+  double? _distanciaRuta; // Distancia de la ruta en metros
+  double? _duracionRuta; // Duración estimada en segundos
+  bool _cargandoRuta = false;
   
   // Configuración de proximidad (metros)
   static const double _distanciaProximidad = 100.0; // 100 metros
@@ -59,6 +65,11 @@ class _TecnicoServicioDetalleScreenState extends State<TecnicoServicioDetalleScr
       }
       
       _calcularDistancia();
+      
+      // Obtener ruta inicial si hay ubicación
+      if (_ubicacionTecnico != null) {
+        _obtenerRutaOptima();
+      }
     }
   }
 
@@ -86,6 +97,7 @@ class _TecnicoServicioDetalleScreenState extends State<TecnicoServicioDetalleScr
       });
       
       _calcularDistancia();
+      _obtenerRutaOptima(); // Obtener ruta cada vez que se actualiza la ubicación
       _enviarUbicacionAlServidor();
       
     } catch (e) {
@@ -109,6 +121,64 @@ class _TecnicoServicioDetalleScreenState extends State<TecnicoServicioDetalleScr
       
       // Auto-actualizar estado si está en proximidad y el estado lo permite
       _verificarAutoActualizacion();
+    }
+  }
+
+  Future<void> _obtenerRutaOptima() async {
+    if (_ubicacionTecnico == null || _cargandoRuta) return;
+    
+    setState(() => _cargandoRuta = true);
+    
+    try {
+      // Usar OSRM (Open Source Routing Machine) - servicio gratuito
+      final url = Uri.parse(
+        'https://router.project-osrm.org/route/v1/driving/'
+        '${_ubicacionTecnico!.longitude},${_ubicacionTecnico!.latitude};'
+        '${widget.servicio.cliente.ubicacionLon},${widget.servicio.cliente.ubicacionLat}'
+        '?overview=full&geometries=geojson'
+      );
+      
+      final response = await http.get(url).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw TimeoutException('La solicitud de ruta tardó demasiado');
+        },
+      );
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        
+        if (data['code'] == 'Ok' && data['routes'] != null && data['routes'].isNotEmpty) {
+          final route = data['routes'][0];
+          final geometry = route['geometry']['coordinates'] as List;
+          
+          // Convertir coordenadas [lon, lat] a LatLng
+          final puntos = geometry.map((coord) {
+            return LatLng(coord[1] as double, coord[0] as double);
+          }).toList();
+          
+          setState(() {
+            _rutaPuntos = puntos;
+            _distanciaRuta = route['distance'] as double?; // en metros
+            _duracionRuta = route['duration'] as double?; // en segundos
+            _cargandoRuta = false;
+          });
+        } else {
+          throw Exception('No se encontró una ruta válida');
+        }
+      } else {
+        throw Exception('Error al obtener ruta: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error obteniendo ruta: $e');
+      setState(() {
+        _cargandoRuta = false;
+        // Si falla, usar línea recta como fallback
+        _rutaPuntos = [
+          LatLng(_ubicacionTecnico!.latitude, _ubicacionTecnico!.longitude),
+          LatLng(widget.servicio.cliente.ubicacionLat, widget.servicio.cliente.ubicacionLon),
+        ];
+      });
     }
   }
 
@@ -169,6 +239,12 @@ class _TecnicoServicioDetalleScreenState extends State<TecnicoServicioDetalleScr
   Future<void> _enviarUbicacionAlServidor() async {
     if (_ubicacionTecnico == null) return;
     
+    // Solo enviar ubicación si el servicio está activo
+    if (!['tecnico_asignado', 'en_camino', 'en_lugar', 'en_atencion']
+        .contains(widget.servicio.estado)) {
+      return;
+    }
+    
     try {
       final token = await Session.getToken();
       if (token != null) {
@@ -178,9 +254,11 @@ class _TecnicoServicioDetalleScreenState extends State<TecnicoServicioDetalleScr
           _ubicacionTecnico!.latitude,
           _ubicacionTecnico!.longitude,
         );
+        print('✅ Ubicación enviada al backend');
       }
     } catch (e) {
-      print('Error enviando ubicación: $e');
+      print('⚠️ Error enviando ubicación: $e');
+      // No mostramos error al usuario, es un proceso en segundo plano
     }
   }
 
@@ -406,89 +484,205 @@ class _TecnicoServicioDetalleScreenState extends State<TecnicoServicioDetalleScr
     final tecnicoLatLng = LatLng(_ubicacionTecnico!.latitude, _ubicacionTecnico!.longitude);
     final clienteLatLng = LatLng(widget.servicio.cliente.ubicacionLat, widget.servicio.cliente.ubicacionLon);
     
-    // Calcular bounds para mostrar ambos puntos
-    final bounds = LatLngBounds.fromPoints([tecnicoLatLng, clienteLatLng]);
+    // Calcular bounds para mostrar ambos puntos (o toda la ruta si existe)
+    final puntosParaBounds = _rutaPuntos.isNotEmpty ? _rutaPuntos : [tecnicoLatLng, clienteLatLng];
+    final bounds = LatLngBounds.fromPoints(puntosParaBounds);
     
-    return FlutterMap(
-      mapController: _mapController,
-      options: MapOptions(
-        bounds: bounds,
-        boundsOptions: const FitBoundsOptions(
-          padding: EdgeInsets.all(50),
-        ),
-      ),
+    return Stack(
       children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.example.mobile_repo',
-        ),
-        
-        // Línea de ruta (simple línea recta por ahora)
-        PolylineLayer(
-          polylines: [
-            Polyline(
-              points: [tecnicoLatLng, clienteLatLng],
-              strokeWidth: 4.0,
-              color: const Color(0xFF932D30),
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            bounds: bounds,
+            boundsOptions: const FitBoundsOptions(
+              padding: EdgeInsets.all(50),
             ),
-          ],
-        ),
-        
-        // Marcadores
-        MarkerLayer(
-          markers: [
-            // Marcador del técnico
-            Marker(
-              point: tecnicoLatLng,
-              width: 60,
-              height: 60,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.blue,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 3),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
-                      blurRadius: 6,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.engineering,
-                  color: Colors.white,
-                  size: 30,
-                ),
-              ),
+          ),
+          children: [
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.example.mobile_repo',
             ),
             
-            // Marcador del cliente
-            Marker(
-              point: clienteLatLng,
-              width: 60,
-              height: 60,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF932D30),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 3),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
-                      blurRadius: 6,
-                      offset: const Offset(0, 3),
+            // Línea de ruta óptima
+            if (_rutaPuntos.isNotEmpty)
+              PolylineLayer(
+                polylines: [
+                  Polyline(
+                    points: _rutaPuntos,
+                    strokeWidth: 5.0,
+                    color: const Color(0xFF932D30),
+                    borderStrokeWidth: 2.0,
+                    borderColor: Colors.white,
+                  ),
+                ],
+              ),
+            
+            // Marcadores
+            MarkerLayer(
+              markers: [
+                // Marcador del técnico
+                Marker(
+                  point: tecnicoLatLng,
+                  width: 60,
+                  height: 60,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.blue,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 3),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.3),
+                          blurRadius: 6,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
                     ),
-                  ],
+                    child: const Icon(
+                      Icons.engineering,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                  ),
                 ),
-                child: const Icon(
-                  Icons.person,
-                  color: Colors.white,
-                  size: 30,
+                
+                // Marcador del cliente
+                Marker(
+                  point: clienteLatLng,
+                  width: 60,
+                  height: 60,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF932D30),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 3),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.3),
+                          blurRadius: 6,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.person,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                  ),
                 ),
+              ],
+            ),
+          ],
+        ),
+        
+        // Información de la ruta en la parte superior del mapa
+        if (_distanciaRuta != null && _duracionRuta != null)
+          Positioned(
+            top: 16,
+            left: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildInfoRuta(
+                    Icons.route,
+                    '${(_distanciaRuta! / 1000).toStringAsFixed(1)} km',
+                    'Distancia',
+                  ),
+                  Container(
+                    width: 1,
+                    height: 30,
+                    color: Colors.grey[300],
+                  ),
+                  _buildInfoRuta(
+                    Icons.access_time,
+                    '${(_duracionRuta! / 60).ceil()} min',
+                    'Tiempo est.',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        
+        // Indicador de carga de ruta
+        if (_cargandoRuta)
+          Positioned(
+            bottom: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.2),
+                    blurRadius: 4,
+                  ),
+                ],
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 8),
+                  Text(
+                    'Calculando ruta...',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildInfoRuta(IconData icono, String valor, String etiqueta) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icono, size: 18, color: const Color(0xFF932D30)),
+            const SizedBox(width: 6),
+            Text(
+              valor,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF2C2C2C),
               ),
             ),
           ],
+        ),
+        const SizedBox(height: 2),
+        Text(
+          etiqueta,
+          style: TextStyle(
+            fontSize: 11,
+            color: Colors.grey[600],
+          ),
         ),
       ],
     );

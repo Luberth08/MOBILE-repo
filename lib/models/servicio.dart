@@ -234,7 +234,8 @@ class ServicioHistorial {
   String get estadoTexto {
     switch (estado) {
       case 'completado':
-        return 'Completado';
+      case 'finalizado':
+        return 'Finalizado';
       case 'cancelado':
         return 'Cancelado';
       default:

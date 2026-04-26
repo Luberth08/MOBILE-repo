@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../services/session.dart';
 import '../services/diagnostic_api.dart';
 import '../services/servicio_api.dart';
+import '../services/cliente_api.dart';
 import '../models/servicio.dart';
+import '../widgets/valoracion_dialog.dart';
 import 'diagnostic_result_screen.dart';
 import 'servicio_detalle_screen.dart';
 
@@ -155,6 +157,7 @@ class _ServiciosTabState extends State<ServiciosTab> with SingleTickerProviderSt
       case 'en_proceso':
         return const Color(0xFF8B5CF6);
       case 'completado':
+      case 'finalizado':
         return const Color(0xFF10B981);
       default:
         return Colors.grey;
@@ -179,6 +182,7 @@ class _ServiciosTabState extends State<ServiciosTab> with SingleTickerProviderSt
       case 'en_proceso':
         return Icons.engineering;
       case 'completado':
+      case 'finalizado':
         return Icons.check_circle;
       default:
         return Icons.help;
@@ -774,6 +778,8 @@ class _ServiciosTabState extends State<ServiciosTab> with SingleTickerProviderSt
   }
 
   Widget _buildHistorialCard(ServicioHistorial servicio) {
+    final esCompletado = servicio.estado == 'completado' || servicio.estado == 'finalizado';
+    
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 2,
@@ -845,10 +851,122 @@ class _ServiciosTabState extends State<ServiciosTab> with SingleTickerProviderSt
                 overflow: TextOverflow.ellipsis,
               ),
             ],
+            
+            // Botón de valoración para servicios completados
+            if (esCompletado) ...[
+              const SizedBox(height: 12),
+              FutureBuilder<Valoracion?>(
+                future: _cargarValoracion(servicio.id),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    );
+                  }
+                  
+                  final valoracion = snapshot.data;
+                  
+                  if (valoracion != null) {
+                    // Ya está valorado - mostrar estrellas
+                    return Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          ...List.generate(5, (index) {
+                            return Icon(
+                              index < valoracion.puntos ? Icons.star : Icons.star_border,
+                              size: 20,
+                              color: index < valoracion.puntos ? Colors.amber : Colors.grey,
+                            );
+                          }),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              valoracion.comentario ?? 'Sin comentario',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: const Color(0xFF52341A).withOpacity(0.8),
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => _mostrarDialogValoracion(servicio, valoracion),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                            ),
+                            child: const Text(
+                              'Editar',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  } else {
+                    // No está valorado - mostrar botón
+                    return ElevatedButton.icon(
+                      onPressed: () => _mostrarDialogValoracion(servicio, null),
+                      icon: const Icon(Icons.star_border, size: 18),
+                      label: const Text('Valorar Servicio'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF932D30),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        elevation: 0,
+                      ),
+                    );
+                  }
+                },
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+  
+  Future<Valoracion?> _cargarValoracion(int servicioId) async {
+    try {
+      final token = await Session.getToken();
+      if (token == null) return null;
+      return await ClienteApi.obtenerValoracion(token, servicioId);
+    } catch (e) {
+      print('Error al cargar valoración: $e');
+      return null;
+    }
+  }
+  
+  Future<void> _mostrarDialogValoracion(ServicioHistorial servicio, Valoracion? valoracionExistente) async {
+    final resultado = await showDialog<bool>(
+      context: context,
+      builder: (context) => ValoracionDialog(
+        servicioId: servicio.id,
+        tallerNombre: servicio.tallerNombre,
+        valoracionExistente: valoracionExistente,
+      ),
+    );
+    
+    // Si se valoró exitosamente, recargar el historial
+    if (resultado == true) {
+      _loadHistorial();
+    }
   }
 
   String _formatFecha(String fecha) {
