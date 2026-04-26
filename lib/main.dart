@@ -15,6 +15,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Asistencia Vehicular',
+      debugShowCheckedModeBanner: false, // Quitar banner de debug
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: const ColorScheme.light(
