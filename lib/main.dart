@@ -1,10 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'services/notification_service.dart';
 import 'screens/email_login_screen.dart';
 import 'screens/otp_screen.dart';
 import 'screens/password_login_screen.dart';
 import 'screens/home_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Configurar manejador de mensajes en segundo plano
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+  
+  // Inicializar notificaciones
+  await NotificationService.initialize();
+  
   runApp(const MyApp());
 }
 

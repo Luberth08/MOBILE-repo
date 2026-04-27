@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_api.dart';
 import '../services/session.dart';
+import '../services/notification_service.dart';
 import 'change_password_screen.dart';
 
 class PasswordLoginScreen extends StatefulWidget {
@@ -46,6 +47,10 @@ class _PasswordLoginScreenState extends State<PasswordLoginScreen> {
     try {
       final token = await AuthApi.login(_email, password);
       await Session.saveToken(token);
+      
+      // Registrar token FCM después del login exitoso
+      await NotificationService.initialize();
+      
       Navigator.pushReplacementNamed(context, '/home');
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(

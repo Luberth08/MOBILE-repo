@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/session.dart';
 import '../services/auth_api.dart';
 import '../services/user_service.dart';
+import '../services/notification_service.dart';
 import 'profile_tab.dart';
 import 'create_diagnostic_screen.dart';
 import 'servicios_tab.dart';
@@ -143,6 +144,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     try {
       final token = await Session.getToken();
       if (token != null) {
+        // Desregistrar token FCM antes del logout
+        await NotificationService.unregisterToken();
         await AuthApi.logout(token);
       }
       await Session.clearToken();
@@ -235,6 +238,29 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     ),
                   )
                 : const Icon(Icons.logout),
+          ),
+          // Botón de prueba de notificaciones (temporal)
+          IconButton(
+            onPressed: () async {
+              try {
+                await NotificationService.sendTestNotification();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Notificación de prueba enviada'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            icon: const Icon(Icons.notifications),
+            tooltip: 'Probar notificación',
           ),
         ],
       ),
